@@ -57,6 +57,24 @@
         return sanitizeFileName(stripExtension(decodeName(doc.name || DEFAULT_BASE_NAME)));
     }
 
+    function documentSignature(doc) {
+        var path = "";
+
+        try {
+            if (doc.fullName) {
+                path = doc.fullName.fsName;
+            }
+        } catch (ignoredFullName) {}
+
+        if (!path) {
+            try {
+                path = doc.name || "";
+            } catch (ignoredName) {}
+        }
+
+        return decodeName(path) + "|" + artboardCount(doc);
+    }
+
     function padNumber(value) {
         return value < 10 ? "0" + value : String(value);
     }
@@ -988,6 +1006,7 @@
 
         return "{" +
             '"hasDocument":' + (hasDocument ? "true" : "false") + "," +
+            '"documentId":' + quoteJson(hasDocument ? documentSignature(app.activeDocument) : "") + "," +
             '"artboardCount":' + totalArtboards + "," +
             '"activeArtboard":' + activeArtboard + "," +
             '"artboardNames":' + quoteJsonArray(names) + "," +

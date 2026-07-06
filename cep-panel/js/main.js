@@ -74,6 +74,8 @@
     };
 
     var documentInfo = {
+        hasDocument: false,
+        documentId: "",
         artboardCount: 1,
         activeArtboard: 1,
         artboardNames: [],
@@ -84,6 +86,7 @@
         folderInput: document.getElementById("folderInput"),
         baseNameInput: document.getElementById("baseNameInput"),
         browseButton: document.getElementById("browseButton"),
+        refreshDocumentButton: document.getElementById("refreshDocumentButton"),
         overwriteCheckbox: document.getElementById("overwriteCheckbox"),
         formatAi: document.getElementById("formatAi"),
         formatPdf: document.getElementById("formatPdf"),
@@ -689,10 +692,16 @@
         busy = nextBusy;
         updateExportButton();
         elements.browseButton.disabled = busy;
+        if (elements.refreshDocumentButton) {
+            elements.refreshDocumentButton.disabled = busy || !cs;
+        }
     }
 
     function updateExportButton() {
         elements.exportButton.disabled = busy || !hasSelectedFormat() || !cs;
+        if (elements.refreshDocumentButton) {
+            elements.refreshDocumentButton.disabled = busy || !cs;
+        }
     }
 
     function updateFormatRows() {
@@ -841,11 +850,24 @@
     }
 
     function updateDocumentInfo(defaults) {
+        var previousDocumentId = documentInfo.documentId || "";
+        var nextDocumentId = trim(defaults.documentId || "");
+        var documentChanged = nextDocumentId !== previousDocumentId && !!(nextDocumentId || previousDocumentId);
+
+        documentInfo.hasDocument = defaults.hasDocument !== false;
+        documentInfo.documentId = nextDocumentId;
         documentInfo.artboardCount = defaults.artboardCount || 1;
         documentInfo.activeArtboard = defaults.activeArtboard || 1;
         documentInfo.artboardNames = defaults.artboardNames || [];
         documentInfo.pdfPresets = defaults.pdfPresets || [];
         updateVersionBadge(defaults.version || APP_VERSION);
+
+        if (documentChanged) {
+            state.artboards = {
+                mode: "all",
+                range: ""
+            };
+        }
 
         if (!state.pdf.preset && documentInfo.pdfPresets.length) {
             state.pdf.preset = documentInfo.pdfPresets[0];
@@ -853,6 +875,8 @@
             state.pdf.preset = pdfPresetValue(state.pdf.preset);
         }
         state.artboards = normalizePersistedArtboards(state.artboards);
+
+        return documentChanged;
     }
 
     function loadDefaults() {
@@ -900,7 +924,7 @@
         });
     }
 
-    function refreshRuntimeDefaults(callback) {
+    function refreshRuntimeDefaults(callback, forceFields) {
         if (!cs) {
             callback(false);
             return;
@@ -908,6 +932,7 @@
 
         evalExporter("AIOExporter.getDefaultsJson();", function (result) {
             var defaults;
+            var documentChanged;
 
             if (parseResultError(result)) {
                 callback(false);
@@ -921,10 +946,20 @@
                 return;
             }
 
-            updateDocumentInfo(defaults);
+            documentChanged = updateDocumentInfo(defaults);
+            if (documentChanged || forceFields) {
+                if (defaults.folder) {
+                    elements.folderInput.value = defaults.folder;
+                }
+                if (defaults.baseName) {
+                    elements.baseNameInput.value = defaults.baseName;
+                }
+            }
             updateArtboardControls();
             updateSummaries();
-            callback(true);
+            updateFormatRows();
+            updateExportButton();
+            callback(true, documentChanged);
         });
     }
 
@@ -1171,8 +1206,8 @@
     }
 
     function openSettings(format) {
-        if (format === "pdf" && cs) {
-            setStatus("Refreshing PDF presets...", false);
+        if (cs) {
+            setStatus("Refreshing active document...", false);
             refreshRuntimeDefaults(function () {
                 renderSettingsModal(format);
                 elements.settingsModal.className = "modal";
@@ -1442,8 +1477,9 @@
             }
             label = trim(documentInfo.artboardNames[i - 1] || "") || ("Artboard " + i);
             html +=
-                '<label class="' + classes + '" title="' + escapeHtml(label) + '">' +
+                '<label class="' + classes + '" title="' + i + ". " + escapeHtml(label) + '">' +
                 '<input class="artboard-checkbox" type="checkbox" data-artboard="' + i + '"' + (selected[i] ? " checked" : "") + ">" +
+                '<span class="artboard-index">' + i + "</span>" +
                 '<span class="artboard-name">' + escapeHtml(label) + "</span>" +
                 "</label>";
         }
@@ -1686,7 +1722,7 @@
         return "";
     }
 
-    function runExporter() {
+    function runExporterWithCurrentSettings() {
         var settings = copySettings();
         var validationMessage = validateSettings(settings);
         var expression;
@@ -1708,6 +1744,50 @@
         });
     }
 
+    function runExporter() {
+        if (!cs) {
+            runExporterWithCurrentSettings();
+            return;
+        }
+
+        setBusy(true);
+        setStatus("Refreshing active document...", false);
+        refreshRuntimeDefaults(function () {
+            setBusy(false);
+            runExporterWithCurrentSettings();
+        });
+    }
+
+    function refreshActiveDocumentIfNeeded() {
+        if (!cs || busy || updateBusy || activeModalFormat) {
+            return;
+        }
+
+        refreshRuntimeDefaults(function (success, documentChanged) {
+            if (success && documentChanged) {
+                setStatus("Active document refreshed.", false);
+            }
+        });
+    }
+
+    function refreshActiveDocumentFromButton() {
+        if (!cs || busy || updateBusy) {
+            return;
+        }
+
+        setBusy(true);
+        setStatus("Refreshing active document...", false);
+        refreshRuntimeDefaults(function (success) {
+            setBusy(false);
+            if (!success) {
+                setStatus("Could not refresh active document.", true);
+                return;
+            }
+
+            setStatus("Active document refreshed.", false);
+        }, true);
+    }
+
     function bindEvents() {
         var settingsButtons = document.querySelectorAll(".settings-button");
         var closeButtons = document.querySelectorAll("[data-close-modal]");
@@ -1715,6 +1795,9 @@
         var i;
 
         elements.browseButton.addEventListener("click", browseFolder);
+        if (elements.refreshDocumentButton) {
+            elements.refreshDocumentButton.addEventListener("click", refreshActiveDocumentFromButton);
+        }
         elements.exportButton.addEventListener("click", runExporter);
         if (elements.updateButton) {
             elements.updateButton.addEventListener("click", checkForUpdates);
@@ -1770,6 +1853,13 @@
         document.addEventListener("keydown", function (event) {
             if (event.key === "Escape" && activeModalFormat) {
                 closeSettings();
+            }
+        });
+
+        window.addEventListener("focus", refreshActiveDocumentIfNeeded);
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden) {
+                refreshActiveDocumentIfNeeded();
             }
         });
     }
