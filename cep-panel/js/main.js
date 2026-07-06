@@ -8,7 +8,7 @@
     var activeUpdateUrl = "";
     var activeUpdateVersion = "";
     var STORAGE_KEY = "aioExporter.settings.v1";
-    var APP_VERSION = "1.3.7";
+    var APP_VERSION = "1.3.8";
     var GITHUB_REPO_URL = "https://github.com/char8294/Illustrator_Add-on";
     var GITHUB_RELEASES_URL = "https://github.com/char8294/Illustrator_Add-on/releases";
     var GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/releases/latest";
@@ -458,14 +458,37 @@
         return window.cep && window.cep.fs ? window.cep.fs : null;
     }
 
+    function normalizeCepSystemPath(value) {
+        var path = String(value || "");
+
+        try {
+            path = decodeURI(path);
+        } catch (ignored) {}
+
+        path = path.replace(/\\/g, "/");
+        path = path.replace(/^file:\/\//i, "");
+        path = path.replace(/^localhost\//i, "");
+        path = path.replace(/^\/([A-Za-z]:\/)/, "$1");
+        path = path.replace(/^file:\//i, "");
+
+        return path;
+    }
+
     function extensionFilePath(extensionRoot, relativePath) {
-        return String(extensionRoot || "").replace(/[\\\/]+$/, "") + "/" + relativePath;
+        return normalizeCepSystemPath(extensionRoot).replace(/[\\\/]+$/, "") + "/" + relativePath;
+    }
+
+    function describeUpdateError(error) {
+        var message = error && error.message ? error.message : String(error || "Unknown error");
+
+        return message.replace(/\s+/g, " ").slice(0, 220);
     }
 
     function writeUpdateFile(extensionRoot, relativePath, contents) {
         var fs = getCepFileSystem();
         var hasEncoding = window.cep && window.cep.encoding && typeof window.cep.encoding.UTF8 !== "undefined";
         var encoding = hasEncoding ? window.cep.encoding.UTF8 : null;
+        var targetPath = extensionFilePath(extensionRoot, relativePath);
         var result;
 
         if (!fs || typeof fs.writeFile !== "function") {
@@ -474,14 +497,14 @@
 
         try {
             result = hasEncoding ?
-                fs.writeFile(extensionFilePath(extensionRoot, relativePath), contents, encoding) :
-                fs.writeFile(extensionFilePath(extensionRoot, relativePath), contents);
+                fs.writeFile(targetPath, contents, encoding) :
+                fs.writeFile(targetPath, contents);
         } catch (error) {
             return error;
         }
 
         if (result && result.err && result.err !== 0) {
-            return new Error("Could not write " + relativePath + " (CEP error " + result.err + ").");
+            return new Error("Could not write " + relativePath + " (CEP error " + result.err + ", path: " + targetPath + ").");
         }
 
         return null;
@@ -531,8 +554,7 @@
         var fs = getCepFileSystem();
 
         if (!extensionRoot || !fs || typeof fs.writeFile !== "function") {
-            setStatus("Automatic update is unavailable. Opening GitHub update page...", true);
-            openExternalUrl(updateUrl || GITHUB_RELEASES_URL);
+            showUpdateCheckFallback("Automatic update is unavailable in this CEP runtime. Open GitHub update page?", updateUrl || GITHUB_RELEASES_URL, true, "Update failed");
             return;
         }
 
@@ -542,8 +564,7 @@
 
             if (downloadError) {
                 setUpdateBusy(false);
-                setStatus("Update download failed. Opening GitHub update page...", true);
-                openExternalUrl(updateUrl || GITHUB_RELEASES_URL);
+                showUpdateCheckFallback("Update download failed: " + describeUpdateError(downloadError) + ". Open GitHub update page?", updateUrl || GITHUB_RELEASES_URL, true, "Update failed");
                 return;
             }
 
@@ -552,8 +573,7 @@
             setUpdateBusy(false);
 
             if (writeError) {
-                setStatus("Update install failed. Opening GitHub update page...", true);
-                openExternalUrl(updateUrl || GITHUB_RELEASES_URL);
+                showUpdateCheckFallback("Update install failed: " + describeUpdateError(writeError) + ". Open GitHub update page?", updateUrl || GITHUB_RELEASES_URL, true, "Update failed");
                 return;
             }
 
@@ -590,11 +610,11 @@
         activeUpdateVersion = normalizeVersion(latestVersion);
     }
 
-    function showUpdateCheckFallback(message, url) {
+    function showUpdateCheckFallback(message, url, isError, title) {
         var fallbackMessage = message || "GitHub update check is unavailable. Open GitHub releases?";
 
-        setStatus(fallbackMessage, false);
-        openUpdateLinkModal("GitHub update check", escapeHtml(fallbackMessage), "Open GitHub", url || GITHUB_RELEASES_URL);
+        setStatus(fallbackMessage, !!isError);
+        openUpdateLinkModal(title || "GitHub update check", escapeHtml(fallbackMessage), "Open GitHub", url || GITHUB_RELEASES_URL);
     }
 
     function finishUpdateCheck(latestVersion, releaseUrl) {
