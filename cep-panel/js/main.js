@@ -6,23 +6,24 @@
     var updateBusy = false;
     var activeModalFormat = null;
     var STORAGE_KEY = "aioExporter.settings.v1";
-    var APP_VERSION = "1.3.2";
+    var APP_VERSION = "1.3.3";
     var GITHUB_RELEASES_URL = "https://github.com/char8294/Illustrator_Add-on/releases";
     var GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/releases/latest";
     var GITHUB_TAGS_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/tags";
 
     var AI_COMPATIBILITY_OPTIONS = [
-        ["ILLUSTRATOR19", "Illustrator 19"],
-        ["ILLUSTRATOR17", "Illustrator 17"],
-        ["ILLUSTRATOR16", "Illustrator 16"],
-        ["ILLUSTRATOR15", "Illustrator 15"],
-        ["ILLUSTRATOR14", "Illustrator 14"],
-        ["ILLUSTRATOR13", "Illustrator 13"],
-        ["ILLUSTRATOR12", "Illustrator 12"],
-        ["ILLUSTRATOR11", "Illustrator 11"],
+        ["ILLUSTRATOR19", "Illustrator 2020"],
+        ["ILLUSTRATOR17", "Illustrator CC (Legacy)"],
+        ["ILLUSTRATOR16", "Illustrator CS6"],
+        ["ILLUSTRATOR15", "Illustrator CS5"],
+        ["ILLUSTRATOR14", "Illustrator CS4"],
+        ["ILLUSTRATOR13", "Illustrator CS3"],
+        ["ILLUSTRATOR12", "Illustrator CS2"],
+        ["ILLUSTRATOR11", "Illustrator CS"],
         ["ILLUSTRATOR10", "Illustrator 10"],
         ["ILLUSTRATOR9", "Illustrator 9"],
-        ["ILLUSTRATOR8", "Illustrator 8"]
+        ["ILLUSTRATOR8", "Illustrator 8"],
+        ["JAPANESEVERSION3", "Japanese Illustrator 3"]
     ];
 
     var FLATTEN_OUTPUT_OPTIONS = [
@@ -37,6 +38,7 @@
             embedLinkedFiles: false,
             compressed: true,
             embedICCProfile: true,
+            embedPermittedFonts: true,
             fontSubsetThreshold: 100,
             flattenOutput: "PRESERVEAPPEARANCE"
         },
@@ -108,6 +110,20 @@
         return '<option value="' + escapeHtml(value) + '"' + (selected ? " selected" : "") + ">" + escapeHtml(label) + "</option>";
     }
 
+    function aiCompatibilityOptionsHtml() {
+        var html = "";
+        var i;
+
+        for (i = 0; i < AI_COMPATIBILITY_OPTIONS.length; i += 1) {
+            if (i === 1) {
+                html += '<option value="" disabled>Legacy Formats</option>';
+            }
+            html += optionHtml(AI_COMPATIBILITY_OPTIONS[i][0], AI_COMPATIBILITY_OPTIONS[i][1], AI_COMPATIBILITY_OPTIONS[i][0] === state.ai.compatibility);
+        }
+
+        return html;
+    }
+
     function optionLabel(options, value, fallback) {
         var i;
 
@@ -149,6 +165,40 @@
         }
 
         return fallback;
+    }
+
+    function aiCompatibilityRank(value) {
+        var key = String(value || "");
+
+        if (key === "JAPANESEVERSION3") {
+            return 3;
+        }
+
+        if (key.indexOf("ILLUSTRATOR") === 0) {
+            return parseInt(key.replace("ILLUSTRATOR", ""), 10) || 0;
+        }
+
+        return 0;
+    }
+
+    function supportsEmbedPermittedFonts(value) {
+        return aiCompatibilityRank(value) >= 9;
+    }
+
+    function supportsLegacyTransparency(value) {
+        var rank = aiCompatibilityRank(value);
+        return rank > 0 && rank <= 8;
+    }
+
+    function normalizeAiState() {
+        if (!supportsEmbedPermittedFonts(state.ai.compatibility) || !state.ai.pdfCompatible) {
+            state.ai.embedPermittedFonts = false;
+        }
+        state.ai.fontSubsetThreshold = state.ai.embedPermittedFonts ? 100 : 0;
+
+        if (!supportsLegacyTransparency(state.ai.compatibility)) {
+            state.ai.flattenOutput = "PRESERVEAPPEARANCE";
+        }
     }
 
     function pdfPresetValue(value) {
@@ -465,6 +515,9 @@
         if (state.ai.embedLinkedFiles) {
             aiSummary.push("Linked files");
         }
+        if (state.ai.embedPermittedFonts) {
+            aiSummary.push("Preview fonts");
+        }
         if (state.ai.compressed) {
             aiSummary.push("Compressed");
         }
@@ -731,10 +784,10 @@
         });
     }
 
-    function controlHtml(id, label, checked) {
+    function controlHtml(id, label, checked, disabled) {
         return (
             '<label class="check-line">' +
-            '<input id="' + id + '" type="checkbox"' + (checked ? " checked" : "") + ">" +
+            '<input id="' + id + '" type="checkbox"' + (checked ? " checked" : "") + (disabled ? " disabled" : "") + ">" +
             "<span>" + label + "</span>" +
             "</label>"
         );
@@ -775,6 +828,11 @@
     }
 
     function renderSettingsModal(activeTab) {
+        var embedPermittedFontsDisabled = !supportsEmbedPermittedFonts(state.ai.compatibility) || !state.ai.pdfCompatible;
+        var legacyTransparencyDisabled = !supportsLegacyTransparency(state.ai.compatibility);
+
+        normalizeAiState();
+
         elements.modalTitle.textContent = "Settings";
         elements.modalBody.innerHTML =
             '<div class="modal-tabs" role="tablist">' +
@@ -786,20 +844,16 @@
                 "ai",
                 '<label class="modal-field wide-modal-field" for="modalAiCompatibility">' +
                 "<span>Version</span>" +
-                '<select id="modalAiCompatibility" class="select-field">' + optionsHtml(AI_COMPATIBILITY_OPTIONS, state.ai.compatibility) + "</select>" +
+                '<select id="modalAiCompatibility" class="select-field">' + aiCompatibilityOptionsHtml() + "</select>" +
                 "</label>" +
                 controlHtml("modalAiPdfCompatible", "PDF compatible", state.ai.pdfCompatible) +
                 controlHtml("modalAiEmbedLinkedFiles", "Include linked files", state.ai.embedLinkedFiles) +
                 controlHtml("modalAiCompressed", "Compress file", state.ai.compressed) +
                 controlHtml("modalAiEmbedICCProfile", "Embed ICC profile", state.ai.embedICCProfile) +
-                '<label class="modal-field number-modal-field" for="modalAiFontSubsetThreshold">' +
-                "<span>Subset fonts below</span>" +
-                '<input id="modalAiFontSubsetThreshold" class="text-field" type="number" min="0" max="100" value="' + state.ai.fontSubsetThreshold + '">' +
-                "<span>%</span>" +
-                "</label>" +
+                controlHtml("modalAiEmbedPermittedFonts", "Embed permitted fonts for file preview", state.ai.embedPermittedFonts, embedPermittedFontsDisabled) +
                 '<label class="modal-field wide-modal-field" for="modalAiFlattenOutput">' +
                 "<span>Legacy transparency</span>" +
-                '<select id="modalAiFlattenOutput" class="select-field">' + optionsHtml(FLATTEN_OUTPUT_OPTIONS, state.ai.flattenOutput) + "</select>" +
+                '<select id="modalAiFlattenOutput" class="select-field"' + (legacyTransparencyDisabled ? " disabled" : "") + ">" + optionsHtml(FLATTEN_OUTPUT_OPTIONS, state.ai.flattenOutput) + "</select>" +
                 "</label>"
             ) +
             panelHtml(
@@ -837,6 +891,7 @@
             );
 
         bindModalTabs();
+        bindAiSettingsControls();
         activateSettingsTab(activeTab || "ai");
     }
 
@@ -865,6 +920,41 @@
                 activateSettingsTab(this.getAttribute("data-settings-tab"));
             });
         }
+    }
+
+    function bindAiSettingsControls() {
+        var compatibilityField = document.getElementById("modalAiCompatibility");
+        var pdfCompatibleField = document.getElementById("modalAiPdfCompatible");
+        var embedPermittedFontsField = document.getElementById("modalAiEmbedPermittedFonts");
+        var flattenOutputField = document.getElementById("modalAiFlattenOutput");
+
+        function updateAiOptionAvailability() {
+            var compatibility = compatibilityField ? compatibilityField.value : state.ai.compatibility;
+            var pdfCompatible = pdfCompatibleField ? pdfCompatibleField.checked : state.ai.pdfCompatible;
+            var embedDisabled = !supportsEmbedPermittedFonts(compatibility) || !pdfCompatible;
+            var flattenDisabled = !supportsLegacyTransparency(compatibility);
+
+            if (embedPermittedFontsField) {
+                embedPermittedFontsField.disabled = embedDisabled;
+                if (embedDisabled) {
+                    embedPermittedFontsField.checked = false;
+                }
+            }
+            if (flattenOutputField) {
+                flattenOutputField.disabled = flattenDisabled;
+                if (flattenDisabled) {
+                    flattenOutputField.value = "PRESERVEAPPEARANCE";
+                }
+            }
+        }
+
+        if (compatibilityField) {
+            compatibilityField.addEventListener("change", updateAiOptionAvailability);
+        }
+        if (pdfCompatibleField) {
+            pdfCompatibleField.addEventListener("change", updateAiOptionAvailability);
+        }
+        updateAiOptionAvailability();
     }
 
     function openSettings(format) {
@@ -1242,8 +1332,10 @@
         state.ai.embedLinkedFiles = boolValue(savedAi.embedLinkedFiles, state.ai.embedLinkedFiles);
         state.ai.compressed = boolValue(savedAi.compressed, state.ai.compressed);
         state.ai.embedICCProfile = boolValue(savedAi.embedICCProfile, state.ai.embedICCProfile);
+        state.ai.embedPermittedFonts = boolValue(savedAi.embedPermittedFonts, numberInRange(savedAi.fontSubsetThreshold, state.ai.fontSubsetThreshold, 0, 100) > 0);
         state.ai.fontSubsetThreshold = numberInRange(savedAi.fontSubsetThreshold, state.ai.fontSubsetThreshold, 0, 100);
         state.ai.flattenOutput = optionValue(FLATTEN_OUTPUT_OPTIONS, savedAi.flattenOutput, state.ai.flattenOutput);
+        normalizeAiState();
 
         savedPdf = saved.pdf || {};
         state.pdf.preset = pdfPresetValue(savedPdf.preset);
@@ -1271,8 +1363,10 @@
         state.ai.embedLinkedFiles = checked("modalAiEmbedLinkedFiles");
         state.ai.compressed = checked("modalAiCompressed");
         state.ai.embedICCProfile = checked("modalAiEmbedICCProfile");
-        state.ai.fontSubsetThreshold = readPercent("modalAiFontSubsetThreshold", state.ai.fontSubsetThreshold);
+        state.ai.embedPermittedFonts = checked("modalAiEmbedPermittedFonts");
+        state.ai.fontSubsetThreshold = state.ai.embedPermittedFonts ? 100 : 0;
         state.ai.flattenOutput = fieldValue("modalAiFlattenOutput", state.ai.flattenOutput);
+        normalizeAiState();
         state.pdf.preset = fieldValue("modalPdfPreset", "");
         state.pdf.outputMode = selectedInputValue("modalPdfOutputMode", state.pdf.outputMode);
         state.png.scale = readScale();
@@ -1289,6 +1383,7 @@
 
     function copySettings() {
         syncArtboardStateFromControls();
+        normalizeAiState();
 
         return {
             folder: trim(elements.folderInput.value),
@@ -1305,6 +1400,7 @@
                 embedLinkedFiles: state.ai.embedLinkedFiles,
                 compressed: state.ai.compressed,
                 embedICCProfile: state.ai.embedICCProfile,
+                embedPermittedFonts: state.ai.embedPermittedFonts,
                 fontSubsetThreshold: state.ai.fontSubsetThreshold,
                 flattenOutput: state.ai.flattenOutput
             },

@@ -11,7 +11,7 @@
 
 body {
     margin: 0;
-    min-width: 340px;
+    min-width: 380px;
     background: #292929;
 }
 
@@ -23,7 +23,7 @@ select {
 
 .panel {
     display: flex;
-    min-height: 480px;
+    min-height: 640px;
     flex-direction: column;
     gap: 14px;
     padding: 16px;
@@ -116,6 +116,12 @@ p {
     box-shadow: 0 0 0 1px rgba(92, 155, 255, 0.35);
 }
 
+.select-field:disabled,
+.text-field:disabled {
+    color: #888;
+    opacity: 0.72;
+}
+
 .check-line {
     display: flex;
     min-height: 24px;
@@ -152,6 +158,10 @@ p {
 .check-line input,
 .format-check input {
     accent-color: #4b8dff;
+}
+
+.check-line input:disabled + span {
+    color: #888;
 }
 
 .artboard-picker {
@@ -489,7 +499,7 @@ p {
     position: relative;
     z-index: 1;
     display: flex;
-    width: min(380px, 100%);
+    width: min(460px, 100%);
     max-height: calc(100vh - 28px);
     flex-direction: column;
     border: 1px solid #565656;

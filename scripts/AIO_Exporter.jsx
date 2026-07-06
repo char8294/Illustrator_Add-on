@@ -6,7 +6,7 @@
 */
 (function () {
     var APP_NAME = "AIO Exporter";
-    var APP_VERSION = "1.3.2";
+    var APP_VERSION = "1.3.3";
     var DEFAULT_BASE_NAME = "AIO_Exporter";
 
     function trim(value) {
@@ -329,6 +329,7 @@
     function normalizeAiCompatibility(value) {
         var key = String(value || "ILLUSTRATOR19");
         var allowed = {
+            JAPANESEVERSION3: true,
             ILLUSTRATOR8: true,
             ILLUSTRATOR9: true,
             ILLUSTRATOR10: true,
@@ -343,6 +344,29 @@
         };
 
         return allowed[key] ? key : "ILLUSTRATOR19";
+    }
+
+    function aiCompatibilityRank(value) {
+        var key = String(value || "");
+
+        if (key === "JAPANESEVERSION3") {
+            return 3;
+        }
+
+        if (key.indexOf("ILLUSTRATOR") === 0) {
+            return parseInt(key.replace("ILLUSTRATOR", ""), 10) || 0;
+        }
+
+        return 0;
+    }
+
+    function supportsEmbedPermittedFonts(value) {
+        return aiCompatibilityRank(value) >= 9;
+    }
+
+    function supportsLegacyTransparency(value) {
+        var rank = aiCompatibilityRank(value);
+        return rank > 0 && rank <= 8;
     }
 
     function normalizeFlattenOutput(value) {
@@ -362,6 +386,9 @@
     }
 
     function compatibilityValue(key) {
+        if (key === "JAPANESEVERSION3") {
+            return Compatibility.JAPANESEVERSION3;
+        }
         if (key === "ILLUSTRATOR8") {
             return Compatibility.ILLUSTRATOR8;
         }
@@ -409,7 +436,8 @@
             "ILLUSTRATOR11",
             "ILLUSTRATOR10",
             "ILLUSTRATOR9",
-            "ILLUSTRATOR8"
+            "ILLUSTRATOR8",
+            "JAPANESEVERSION3"
         ];
         var i;
         var fallbackValue;
@@ -615,6 +643,7 @@
                 embedLinkedFiles: false,
                 compressed: true,
                 embedICCProfile: true,
+                embedPermittedFonts: true,
                 fontSubsetThreshold: 100,
                 flattenOutput: "PRESERVEAPPEARANCE"
             },
@@ -650,6 +679,14 @@
         var rawArtboards = raw.artboards || {};
         var rawPngFullDocument = bool(rawPng.fullDocument, defaults.png.fullDocument);
         var folder = raw.folder && raw.folder.fsName ? raw.folder : (raw.folder ? new Folder(raw.folder) : defaults.folder);
+        var aiCompatibility = normalizeAiCompatibility(rawAi.compatibility);
+        var aiPdfCompatible = bool(rawAi.pdfCompatible, defaults.ai.pdfCompatible);
+        var aiEmbedPermittedFonts = bool(rawAi.embedPermittedFonts, numberInRange(rawAi.fontSubsetThreshold, defaults.ai.fontSubsetThreshold, 0, 100) > 0);
+        var aiFlattenOutput = supportsLegacyTransparency(aiCompatibility) ? normalizeFlattenOutput(rawAi.flattenOutput) : defaults.ai.flattenOutput;
+
+        if (!supportsEmbedPermittedFonts(aiCompatibility) || !aiPdfCompatible) {
+            aiEmbedPermittedFonts = false;
+        }
 
         return {
             folder: folder,
@@ -661,13 +698,14 @@
                 png: bool(rawFormats.png, false)
             },
             ai: {
-                compatibility: normalizeAiCompatibility(rawAi.compatibility),
-                pdfCompatible: bool(rawAi.pdfCompatible, defaults.ai.pdfCompatible),
+                compatibility: aiCompatibility,
+                pdfCompatible: aiPdfCompatible,
                 embedLinkedFiles: bool(rawAi.embedLinkedFiles, defaults.ai.embedLinkedFiles),
                 compressed: bool(rawAi.compressed, defaults.ai.compressed),
                 embedICCProfile: bool(rawAi.embedICCProfile, defaults.ai.embedICCProfile),
-                fontSubsetThreshold: numberInRange(rawAi.fontSubsetThreshold, defaults.ai.fontSubsetThreshold, 0, 100),
-                flattenOutput: normalizeFlattenOutput(rawAi.flattenOutput)
+                embedPermittedFonts: aiEmbedPermittedFonts,
+                fontSubsetThreshold: aiEmbedPermittedFonts ? 100 : 0,
+                flattenOutput: aiFlattenOutput
             },
             pdf: {
                 preset: trim(rawPdf.preset || ""),
@@ -714,9 +752,14 @@
         options.embedLinkedFiles = settings.ai.embedLinkedFiles;
         options.compressed = settings.ai.compressed;
         options.embedICCProfile = settings.ai.embedICCProfile;
-        options.fontSubsetThreshold = settings.ai.fontSubsetThreshold;
 
-        if (includeEnumOptions) {
+        if (supportsEmbedPermittedFonts(settings.ai.compatibility) && settings.ai.pdfCompatible) {
+            try {
+                options.fontSubsetThreshold = settings.ai.embedPermittedFonts ? 100 : 0;
+            } catch (ignoredFontPreview) {}
+        }
+
+        if (includeEnumOptions && supportsLegacyTransparency(settings.ai.compatibility)) {
             assignFlattenOutput(options, settings.ai.flattenOutput);
         }
     }
@@ -965,20 +1008,22 @@
             "ILLUSTRATOR11",
             "ILLUSTRATOR10",
             "ILLUSTRATOR9",
-            "ILLUSTRATOR8"
+            "ILLUSTRATOR8",
+            "JAPANESEVERSION3"
         ];
         var aiCompatibilityLabels = [
-            "Illustrator 19",
-            "Illustrator 17",
-            "Illustrator 16",
-            "Illustrator 15",
-            "Illustrator 14",
-            "Illustrator 13",
-            "Illustrator 12",
-            "Illustrator 11",
+            "Illustrator 2020",
+            "Illustrator CC (Legacy)",
+            "Illustrator CS6",
+            "Illustrator CS5",
+            "Illustrator CS4",
+            "Illustrator CS3",
+            "Illustrator CS2",
+            "Illustrator CS",
             "Illustrator 10",
             "Illustrator 9",
-            "Illustrator 8"
+            "Illustrator 8",
+            "Japanese Illustrator 3"
         ];
         var flattenValues = ["PRESERVEAPPEARANCE", "PRESERVEPATHS"];
         var flattenLabels = ["Preserve Appearance", "Preserve Paths"];
@@ -1066,17 +1111,34 @@
         aiCompressedCheck.value = true;
         var aiIccCheck = aiPanel.add("checkbox", undefined, "Embed ICC profile");
         aiIccCheck.value = true;
-        var fontSubsetGroup = aiPanel.add("group");
-        fontSubsetGroup.orientation = "row";
-        fontSubsetGroup.add("statictext", undefined, "Subset fonts below:");
-        var fontSubsetInput = fontSubsetGroup.add("edittext", undefined, "100");
-        fontSubsetInput.characters = 6;
-        fontSubsetGroup.add("statictext", undefined, "%");
+        var aiEmbedPermittedFontsCheck = aiPanel.add("checkbox", undefined, "Embed permitted fonts for file preview");
+        aiEmbedPermittedFontsCheck.value = true;
         var flattenGroup = aiPanel.add("group");
         flattenGroup.orientation = "row";
         flattenGroup.add("statictext", undefined, "Legacy transparency:");
         var flattenDropdown = flattenGroup.add("dropdownlist", undefined, flattenLabels);
         flattenDropdown.selection = 0;
+
+        function selectedAiCompatibility() {
+            return selectedDropdownValue(aiCompatibilityDropdown, aiCompatibilityValues, defaults.ai.compatibility);
+        }
+
+        function updateAiOptionAvailability() {
+            var compatibility = selectedAiCompatibility();
+
+            aiEmbedPermittedFontsCheck.enabled = supportsEmbedPermittedFonts(compatibility) && aiPdfCompatibleCheck.value;
+            if (!aiEmbedPermittedFontsCheck.enabled) {
+                aiEmbedPermittedFontsCheck.value = false;
+            }
+            flattenDropdown.enabled = supportsLegacyTransparency(compatibility);
+            if (!flattenDropdown.enabled) {
+                flattenDropdown.selection = 0;
+            }
+        }
+
+        aiCompatibilityDropdown.onChange = updateAiOptionAvailability;
+        aiPdfCompatibleCheck.onClick = updateAiOptionAvailability;
+        updateAiOptionAvailability();
 
         var pdfPanel = settingsTabs.add("tab", undefined, "PDF");
         pdfPanel.orientation = "column";
@@ -1188,7 +1250,8 @@
                 embedLinkedFiles: aiEmbedLinkedFilesCheck.value,
                 compressed: aiCompressedCheck.value,
                 embedICCProfile: aiIccCheck.value,
-                fontSubsetThreshold: numberInRange(fontSubsetInput.text, defaults.ai.fontSubsetThreshold, 0, 100),
+                embedPermittedFonts: aiEmbedPermittedFontsCheck.value,
+                fontSubsetThreshold: aiEmbedPermittedFontsCheck.value ? 100 : 0,
                 flattenOutput: selectedDropdownValue(flattenDropdown, flattenValues, defaults.ai.flattenOutput)
             },
             pdf: {
