@@ -6,7 +6,7 @@
 */
 (function () {
     var APP_NAME = "AIO Exporter";
-    var APP_VERSION = "1.3.6";
+    var APP_VERSION = "1.3.7";
     var DEFAULT_BASE_NAME = "AIO_Exporter";
 
     function trim(value) {
