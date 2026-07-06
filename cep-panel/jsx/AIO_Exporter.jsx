@@ -6,7 +6,7 @@
 */
 (function () {
     var APP_NAME = "AIO Exporter";
-    var APP_VERSION = "1.3.3";
+    var APP_VERSION = "1.3.5";
     var DEFAULT_BASE_NAME = "AIO_Exporter";
 
     function trim(value) {
@@ -684,7 +684,7 @@
         var aiEmbedPermittedFonts = bool(rawAi.embedPermittedFonts, numberInRange(rawAi.fontSubsetThreshold, defaults.ai.fontSubsetThreshold, 0, 100) > 0);
         var aiFlattenOutput = supportsLegacyTransparency(aiCompatibility) ? normalizeFlattenOutput(rawAi.flattenOutput) : defaults.ai.flattenOutput;
 
-        if (!supportsEmbedPermittedFonts(aiCompatibility) || !aiPdfCompatible) {
+        if (!supportsEmbedPermittedFonts(aiCompatibility)) {
             aiEmbedPermittedFonts = false;
         }
 
@@ -753,7 +753,16 @@
         options.compressed = settings.ai.compressed;
         options.embedICCProfile = settings.ai.embedICCProfile;
 
-        if (supportsEmbedPermittedFonts(settings.ai.compatibility) && settings.ai.pdfCompatible) {
+        if (supportsEmbedPermittedFonts(settings.ai.compatibility)) {
+            // New property for v29.3+ (Best guess based on naming convention)
+            try {
+                options.embedPermittedFontsForFilePreview = settings.ai.embedPermittedFonts;
+            } catch (e) {}
+            try {
+                options.embedPermittedFonts = settings.ai.embedPermittedFonts;
+            } catch (e) {}
+
+            // Fallback: Legacy font subsetting for older versions
             try {
                 options.fontSubsetThreshold = settings.ai.embedPermittedFonts ? 100 : 0;
             } catch (ignoredFontPreview) {}

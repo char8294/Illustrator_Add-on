@@ -6,10 +6,12 @@
     var updateBusy = false;
     var activeModalFormat = null;
     var STORAGE_KEY = "aioExporter.settings.v1";
-    var APP_VERSION = "1.3.3";
+    var APP_VERSION = "1.3.5";
+    var GITHUB_REPO_URL = "https://github.com/char8294/Illustrator_Add-on";
     var GITHUB_RELEASES_URL = "https://github.com/char8294/Illustrator_Add-on/releases";
     var GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/releases/latest";
     var GITHUB_TAGS_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/tags";
+    var GITHUB_RAW_MAIN_JS_URL = "https://raw.githubusercontent.com/char8294/Illustrator_Add-on/main/cep-panel/js/main.js";
 
     var AI_COMPATIBILITY_OPTIONS = [
         ["ILLUSTRATOR19", "Illustrator 2020"],
@@ -191,7 +193,7 @@
     }
 
     function normalizeAiState() {
-        if (!supportsEmbedPermittedFonts(state.ai.compatibility) || !state.ai.pdfCompatible) {
+        if (!supportsEmbedPermittedFonts(state.ai.compatibility)) {
             state.ai.embedPermittedFonts = false;
         }
         state.ai.fontSubsetThreshold = state.ai.embedPermittedFonts ? 100 : 0;
@@ -331,17 +333,17 @@
         }
     }
 
-    function fetchJson(url, callback) {
+    function fetchUrl(url, callback) {
         var request;
         var completed = false;
 
-        function finish(error, release) {
+        function finish(error, text) {
             if (completed) {
                 return;
             }
 
             completed = true;
-            callback(error, release);
+            callback(error, text);
         }
 
         if (typeof XMLHttpRequest !== "function") {
@@ -354,8 +356,6 @@
         request.open("GET", url, true);
         request.timeout = 8000;
         request.onreadystatechange = function () {
-            var release;
-
             if (request.readyState !== 4) {
                 return;
             }
@@ -365,14 +365,7 @@
                 return;
             }
 
-            try {
-                release = JSON.parse(request.responseText || "{}");
-            } catch (error) {
-                finish(error);
-                return;
-            }
-
-            finish(null, release);
+            finish(null, request.responseText || "");
         };
         request.onerror = function () {
             finish(new Error("Could not connect to GitHub."));
@@ -385,6 +378,26 @@
         } catch (error) {
             finish(error);
         }
+    }
+
+    function fetchJson(url, callback) {
+        fetchUrl(url, function (error, text) {
+            var data;
+
+            if (error) {
+                callback(error);
+                return;
+            }
+
+            try {
+                data = JSON.parse(text || "{}");
+            } catch (parseError) {
+                callback(parseError);
+                return;
+            }
+
+            callback(null, data);
+        });
     }
 
     function fetchLatestRelease(callback) {
@@ -411,9 +424,28 @@
         return normalizeVersion(release && (release.tag_name || release.name));
     }
 
-    function showUpdateCheckFallback(message) {
+    function fetchRawMainVersion(callback) {
+        fetchUrl(GITHUB_RAW_MAIN_JS_URL, function (error, text) {
+            var match;
+
+            if (error) {
+                callback(error);
+                return;
+            }
+
+            match = String(text || "").match(/APP_VERSION\s*=\s*["']([^"']+)["']/);
+            if (!match) {
+                callback(new Error("Could not read source version."));
+                return;
+            }
+
+            callback(null, normalizeVersion(match[1]));
+        });
+    }
+
+    function showUpdateCheckFallback(message, url) {
         setStatus(message || "Opening GitHub releases page...", false);
-        openExternalUrl(GITHUB_RELEASES_URL);
+        openExternalUrl(url || GITHUB_RELEASES_URL);
     }
 
     function finishUpdateCheck(latestVersion, releaseUrl) {
@@ -454,14 +486,22 @@
             }
 
             fetchLatestTag(function (tagError, tag) {
-                setUpdateBusy(false);
-
-                if (tagError) {
-                    showUpdateCheckFallback("GitHub release check is unavailable. Opening releases...");
+                if (!tagError) {
+                    setUpdateBusy(false);
+                    finishUpdateCheck(releaseVersion(tag), GITHUB_RELEASES_URL);
                     return;
                 }
 
-                finishUpdateCheck(releaseVersion(tag), GITHUB_RELEASES_URL);
+                fetchRawMainVersion(function (sourceError, sourceVersion) {
+                    setUpdateBusy(false);
+
+                    if (sourceError) {
+                        showUpdateCheckFallback("GitHub update check is unavailable. Opening repository...", GITHUB_REPO_URL);
+                        return;
+                    }
+
+                    finishUpdateCheck(sourceVersion, GITHUB_REPO_URL);
+                });
             });
         });
     }
@@ -828,7 +868,7 @@
     }
 
     function renderSettingsModal(activeTab) {
-        var embedPermittedFontsDisabled = !supportsEmbedPermittedFonts(state.ai.compatibility) || !state.ai.pdfCompatible;
+        var embedPermittedFontsDisabled = !supportsEmbedPermittedFonts(state.ai.compatibility);
         var legacyTransparencyDisabled = !supportsLegacyTransparency(state.ai.compatibility);
 
         normalizeAiState();
@@ -846,11 +886,11 @@
                 "<span>Version</span>" +
                 '<select id="modalAiCompatibility" class="select-field">' + aiCompatibilityOptionsHtml() + "</select>" +
                 "</label>" +
-                controlHtml("modalAiPdfCompatible", "PDF compatible", state.ai.pdfCompatible) +
-                controlHtml("modalAiEmbedLinkedFiles", "Include linked files", state.ai.embedLinkedFiles) +
-                controlHtml("modalAiCompressed", "Compress file", state.ai.compressed) +
-                controlHtml("modalAiEmbedICCProfile", "Embed ICC profile", state.ai.embedICCProfile) +
-                controlHtml("modalAiEmbedPermittedFonts", "Embed permitted fonts for file preview", state.ai.embedPermittedFonts, embedPermittedFontsDisabled) +
+                controlHtml("modalAiEmbedPermittedFonts", "Embed permitted fonts for file preview <span class=\"info-icon\" aria-hidden=\"true\">i</span>", state.ai.embedPermittedFonts, embedPermittedFontsDisabled) +
+                controlHtml("modalAiPdfCompatible", "Create PDF Compatible File", state.ai.pdfCompatible) +
+                controlHtml("modalAiEmbedLinkedFiles", "Include Linked Files", state.ai.embedLinkedFiles) +
+                controlHtml("modalAiEmbedICCProfile", "Embed ICC Profiles", state.ai.embedICCProfile) +
+                controlHtml("modalAiCompressed", "Use Compression", state.ai.compressed) +
                 '<label class="modal-field wide-modal-field" for="modalAiFlattenOutput">' +
                 "<span>Legacy transparency</span>" +
                 '<select id="modalAiFlattenOutput" class="select-field"' + (legacyTransparencyDisabled ? " disabled" : "") + ">" + optionsHtml(FLATTEN_OUTPUT_OPTIONS, state.ai.flattenOutput) + "</select>" +
@@ -879,7 +919,7 @@
             ) +
             panelHtml(
                 "png",
-                '<label class="modal-field" for="modalPngScale">' +
+                '<label class="modal-field number-modal-field" for="modalPngScale">' +
                 "<span>Scale</span>" +
                 '<input id="modalPngScale" class="text-field" type="number" min="1" max="1000" value="' + state.png.scale + '">' +
                 "<span>%</span>" +
@@ -931,7 +971,7 @@
         function updateAiOptionAvailability() {
             var compatibility = compatibilityField ? compatibilityField.value : state.ai.compatibility;
             var pdfCompatible = pdfCompatibleField ? pdfCompatibleField.checked : state.ai.pdfCompatible;
-            var embedDisabled = !supportsEmbedPermittedFonts(compatibility) || !pdfCompatible;
+            var embedDisabled = !supportsEmbedPermittedFonts(compatibility);
             var flattenDisabled = !supportsLegacyTransparency(compatibility);
 
             if (embedPermittedFontsField) {
