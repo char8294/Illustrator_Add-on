@@ -10,11 +10,11 @@
     var activeUpdateRef = "";
     var STORAGE_KEY = "aioExporter.settings.v1";
     var APP_VERSION = "1.4.0";
-    var GITHUB_REPO_URL = "https://github.com/char8294/Illustrator_Add-on";
-    var GITHUB_RELEASES_URL = "https://github.com/char8294/Illustrator_Add-on/releases";
-    var GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/releases/latest";
-    var GITHUB_TAGS_API = "https://api.github.com/repos/char8294/Illustrator_Add-on/tags";
-    var GITHUB_RAW_REPO_BASE_URL = "https://raw.githubusercontent.com/char8294/Illustrator_Add-on/";
+    var GITHUB_REPO_URL = "https://github.com/char8294/AIO_Exporter_Illustrator_Add-on";
+    var GITHUB_RELEASES_URL = "https://github.com/char8294/AIO_Exporter_Illustrator_Add-on/releases";
+    var GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/char8294/AIO_Exporter_Illustrator_Add-on/releases/latest";
+    var GITHUB_TAGS_API = "https://api.github.com/repos/char8294/AIO_Exporter_Illustrator_Add-on/tags";
+    var GITHUB_RAW_REPO_BASE_URL = "https://raw.githubusercontent.com/char8294/AIO_Exporter_Illustrator_Add-on/";
     var GITHUB_RAW_MAIN_JS_URL = GITHUB_RAW_REPO_BASE_URL + "main/cep-panel/js/main.js";
     var UPDATE_FILE_PATHS = [
         "CSXS/manifest.xml",
