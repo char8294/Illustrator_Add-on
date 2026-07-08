@@ -79,6 +79,22 @@ p {
     padding: 6px 8px;
 }
 
+.version-link {
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.version-link:hover {
+    border-color: #6f879f;
+    color: #ffffff;
+}
+
+.version-link:focus {
+    outline: 0;
+    box-shadow: 0 0 0 1px rgba(92, 155, 255, 0.45);
+}
+
 .section {
     display: flex;
     flex-direction: column;

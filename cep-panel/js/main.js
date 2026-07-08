@@ -10,7 +10,7 @@
     var activeUpdateRef = "";
     var activeUpdateArchiveUrl = "";
     var STORAGE_KEY = "aioExporter.settings.v1";
-    var APP_VERSION = "1.4.9";
+    var APP_VERSION = "1.5.0";
     var GITHUB_OWNER = "char8294";
     var GITHUB_REPO = "AIO_Exporter_Illustrator_Add-on";
     var GITHUB_REPO_URL = "https://github.com/char8294/AIO_Exporter_Illustrator_Add-on";
@@ -337,6 +337,11 @@
     }
 
     function openExternalUrl(url) {
+        if (window.cep && window.cep.util && typeof window.cep.util.openURLInDefaultBrowser === "function") {
+            window.cep.util.openURLInDefaultBrowser(url);
+            return;
+        }
+
         if (cs && typeof cs.openURLInDefaultBrowser === "function") {
             cs.openURLInDefaultBrowser(url);
             return;
@@ -2350,6 +2355,11 @@
         elements.exportButton.addEventListener("click", runExporter);
         if (elements.updateButton) {
             elements.updateButton.addEventListener("click", checkForUpdates);
+        }
+        if (elements.versionBadge) {
+            elements.versionBadge.addEventListener("click", function () {
+                openExternalUrl(GITHUB_REPO_URL);
+            });
         }
         elements.modalDoneButton.addEventListener("click", handleModalDone);
         elements.overwriteCheckbox.addEventListener("change", persistCurrentSettings);

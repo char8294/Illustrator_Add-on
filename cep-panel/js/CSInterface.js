@@ -40,6 +40,20 @@
         return path;
     };
 
+    CSInterface.prototype.openURLInDefaultBrowser = function (url) {
+        if (global.cep && global.cep.util && typeof global.cep.util.openURLInDefaultBrowser === "function") {
+            global.cep.util.openURLInDefaultBrowser(url);
+            return;
+        }
+
+        if (global.__adobe_cep__ && typeof global.__adobe_cep__.invokeSync === "function") {
+            global.__adobe_cep__.invokeSync("com.adobe.cep.util.openURLInDefaultBrowser", url);
+            return;
+        }
+
+        global.open(url, "_blank");
+    };
+
     global.SystemPath = SystemPath;
     global.CSInterface = CSInterface;
 })(window);
